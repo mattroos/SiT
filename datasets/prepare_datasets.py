@@ -8,6 +8,7 @@ from timm.data import create_transform
 from datasets.TinyImageNet import TinyImageNetDataset
 from datasets.CIFAR import CIFAR10, CIFAR100
 from datasets.STL10 import STL10
+from datasets.COWS import COWS
     
 def build_dataset(is_train, args):
     transform = build_transform(is_train, args)
@@ -19,7 +20,6 @@ def build_dataset(is_train, args):
                           training_mode = args.training_mode)
         nb_classes = 10
 
-    
     elif args.data_set == 'CIFAR100':
         dataset = CIFAR100(os.path.join(args.dataset_location, 'CIFAR100_dataset'), 
                            download=True, train=is_train, transform=transform, 
@@ -27,7 +27,6 @@ def build_dataset(is_train, args):
                            training_mode = args.training_mode)
         
         nb_classes = 100
-        
 
     elif args.data_set == 'STL10':
         #### Note num_imgs_per_cat is not implemented in this dataset as it has unlabeled data
@@ -38,7 +37,7 @@ def build_dataset(is_train, args):
                         download=True, split=split, transform=transform,
                           training_mode = args.training_mode)
         nb_classes = 10
-        
+
     elif args.data_set == 'TinyImageNet':
         mode='train' if is_train else 'val'
         root_dir = os.path.join(args.dataset_location, 'TinyImageNet/tiny-imagenet-200/')
@@ -47,11 +46,12 @@ def build_dataset(is_train, args):
                           training_mode = args.training_mode)
         nb_classes = 200
 
+    elif args.data_set == 'COWS':
+        # https://discuss.pytorch.org/t/how-to-load-images-without-using-imagefolder/59999/2
+        dataset = COWS('/Users/mattroos/scratch/images_crc', transform=transform)
+        nb_classes = 1
 
     return dataset, nb_classes
-
-
-
 
 
 def build_transform(is_train, args):
