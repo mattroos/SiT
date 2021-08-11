@@ -231,24 +231,24 @@ def main(args):
             label_smoothing=args.smoothing, num_classes=args.nb_classes)
 
 
-    import matplotlib.pyplot as plt
-    plt.ion()
-    for idx, sample in enumerate(data_loader_train):
-        X1, rot1, X2, rot2 = sample
-        plt.figure(1)
-        plt.clf()
-        for i in range(args.batch_size):
-            im = np.transpose(X1[i].cpu().numpy(), (1, 2, 0))
-            im = (im - np.min(im)) / (np.max(im) - np.min(im))
-            plt.subplot(args.batch_size, 2, 2*i+1)
-            plt.imshow(im)
+    # import matplotlib.pyplot as plt
+    # plt.ion()
+    # for idx, sample in enumerate(data_loader_train):
+    #     X1, rot1, X2, rot2 = sample
+    #     plt.figure(1)
+    #     plt.clf()
+    #     for i in range(args.batch_size):
+    #         im = np.transpose(X1[i].cpu().numpy(), (1, 2, 0))
+    #         im = (im - np.min(im)) / (np.max(im) - np.min(im))
+    #         plt.subplot(args.batch_size, 2, 2*i+1)
+    #         plt.imshow(im)
 
-            im = np.transpose(X2[i].cpu().numpy(), (1, 2, 0))
-            im = (im - np.min(im)) / (np.max(im) - np.min(im))
-            plt.subplot(args.batch_size, 2, 2*i+2)
-            plt.imshow(im)
+    #         im = np.transpose(X2[i].cpu().numpy(), (1, 2, 0))
+    #         im = (im - np.min(im)) / (np.max(im) - np.min(im))
+    #         plt.subplot(args.batch_size, 2, 2*i+2)
+    #         plt.imshow(im)
 
-        plt.waitforbuttonpress()
+    #     plt.waitforbuttonpress()
 
 
     print(f"Creating model: {args.model}")
