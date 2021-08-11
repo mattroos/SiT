@@ -23,6 +23,7 @@ from samplers import RASampler
 import vision_transformer_SiT
 import utils
 
+import pdb
 
 def get_args_parser():
     parser = argparse.ArgumentParser('SiT training and evaluation script', add_help=False)
@@ -182,7 +183,8 @@ def main(args):
     # disable any harsh augmentation in case of Self-supervise training
     if args.training_mode == 'SSL':
         print("NOTE: Smoothing, Mixup, CutMix, and AutoAugment will be disabled in case of Self-supervise training")
-        args.smoothing = args.reprob = args.reprob = args.recount = args.mixup = args.cutmix = 0.0
+        # args.smoothing = args.reprob = args.reprob = args.recount = args.mixup = args.cutmix = 0.0
+        args.smoothing = args.mixup = args.cutmix = 0.0
         args.aa = ''
 
         if args.SiT_LinearEvaluation == 1:
@@ -231,15 +233,14 @@ def main(args):
 
 
     ## THIS APPEARS TO BE RANDOMLY SCALING AND CROPPING TO GET 224x224
-    train_loader = torch.utils.data.DataLoader(dataset_train, batch_size=args.batch_size,
-                                               shuffle=False, num_workers=4, drop_last=True)
-
-    ## TODO: What does data_loader_train do differently???
+    ## Why not working when using sampler_train?
+    data_loader_train = torch.utils.data.DataLoader(dataset_train, # sampler=sampler_train,
+        batch_size=args.batch_size, num_workers=args.num_workers,
+        pin_memory=args.pin_mem, drop_last=True, collate_fn=collate_fn)
 
     import matplotlib.pyplot as plt
     plt.ion()
-    for idx, sample in enumerate(train_loader):
-    # for idx, sample in enumerate(data_loader_train):
+    for idx, sample in enumerate(data_loader_train):
         X1, rot1, X2, rot2 = sample
         plt.figure(1)
         plt.clf()
