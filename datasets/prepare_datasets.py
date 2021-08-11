@@ -48,7 +48,10 @@ def build_dataset(is_train, args):
 
     elif args.data_set == 'COWS':
         # https://discuss.pytorch.org/t/how-to-load-images-without-using-imagefolder/59999/2
-        dataset = COWS('/Users/mattroos/scratch/images_crc', transform=transform)
+        
+        # dataset = COWS('/Users/mattroos/scratch/images_crc', transform=transform)
+        dataset = COWS('/Data/DairyTech/Flickr', transform=transform)
+
         nb_classes = 1
 
     return dataset, nb_classes
