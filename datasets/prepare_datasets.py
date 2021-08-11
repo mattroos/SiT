@@ -50,7 +50,8 @@ def build_dataset(is_train, args):
         # https://discuss.pytorch.org/t/how-to-load-images-without-using-imagefolder/59999/2
         
         # dataset = COWS('/Users/mattroos/scratch/images_crc', transform=transform)
-        dataset = COWS('/Data/DairyTech/Flickr', transform=transform)
+        # dataset = COWS('/Data/DairyTech/Flickr', transform=transform)
+        dataset = COWS('/Data/DairyTech/Flickr_cows_postprocessed', transform=transform)
 
         nb_classes = 1
 
@@ -69,6 +70,8 @@ def build_transform(is_train, args):
             re_prob=args.reprob,
             re_mode=args.remode,
             re_count=args.recount,
+            scale=(0.75, 1.0),
+            ratio=(1.0, 1.0)
         )
         if not resize_im:
             transform.transforms[0] = transforms.RandomCrop(

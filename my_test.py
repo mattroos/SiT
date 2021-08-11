@@ -231,13 +231,6 @@ def main(args):
             label_smoothing=args.smoothing, num_classes=args.nb_classes)
 
 
-
-    ## THIS APPEARS TO BE RANDOMLY SCALING AND CROPPING TO GET 224x224
-    ## Why not working when using sampler_train?
-    data_loader_train = torch.utils.data.DataLoader(dataset_train, # sampler=sampler_train,
-        batch_size=args.batch_size, num_workers=args.num_workers,
-        pin_memory=args.pin_mem, drop_last=True, collate_fn=collate_fn)
-
     import matplotlib.pyplot as plt
     plt.ion()
     for idx, sample in enumerate(data_loader_train):
@@ -256,167 +249,162 @@ def main(args):
             plt.imshow(im)
 
         plt.waitforbuttonpress()
-        # import pdb
-        # import matplotlib.pyplot as plt
-        # plt.ion()
-        # pdb.set_trace()
 
 
+    print(f"Creating model: {args.model}")
+    model = create_model(
+        args.model, pretrained=False, num_classes=args.nb_classes,
+        drop_rate=args.drop, drop_path_rate=args.drop_path, representation_size=args.representation_size,
+        drop_block_rate=None, training_mode=args.training_mode)
 
-    # print(f"Creating model: {args.model}")
-    # model = create_model(
-    #     args.model, pretrained=False, num_classes=args.nb_classes,
-    #     drop_rate=args.drop, drop_path_rate=args.drop_path, representation_size=args.representation_size,
-    #     drop_block_rate=None, training_mode=args.training_mode)
+    if args.finetune:
+        checkpoint = torch.load(args.finetune, map_location='cpu')
 
-    # if args.finetune:
-    #     checkpoint = torch.load(args.finetune, map_location='cpu')
+        checkpoint_model = checkpoint['model']
+        state_dict = model.state_dict()
+        for k in ['rot_head.weight', 'rot_head.bias', 'contrastive_head.weight', 'contrastive_head.bias']:
+            if k in checkpoint_model and checkpoint_model[k].shape != state_dict[k].shape:
+                print(f"Removing key {k} from pretrained checkpoint")
+                del checkpoint_model[k]
 
-    #     checkpoint_model = checkpoint['model']
-    #     state_dict = model.state_dict()
-    #     for k in ['rot_head.weight', 'rot_head.bias', 'contrastive_head.weight', 'contrastive_head.bias']:
-    #         if k in checkpoint_model and checkpoint_model[k].shape != state_dict[k].shape:
-    #             print(f"Removing key {k} from pretrained checkpoint")
-    #             del checkpoint_model[k]
+        # interpolate position embedding
+        pos_embed_checkpoint = checkpoint_model['pos_embed']
+        embedding_size = pos_embed_checkpoint.shape[-1]
+        num_patches = model.patch_embed.num_patches
+        num_extra_tokens = model.pos_embed.shape[-2] - num_patches
+        orig_size = int((pos_embed_checkpoint.shape[-2] - num_extra_tokens) ** 0.5)
+        new_size = int(num_patches ** 0.5)
+        extra_tokens = pos_embed_checkpoint[:, :num_extra_tokens]
+        pos_tokens = pos_embed_checkpoint[:, num_extra_tokens:]
+        pos_tokens = pos_tokens.reshape(-1, orig_size, orig_size, embedding_size).permute(0, 3, 1, 2)
+        pos_tokens = torch.nn.functional.interpolate(
+            pos_tokens, size=(new_size, new_size), mode='bicubic', align_corners=False)
+        pos_tokens = pos_tokens.permute(0, 2, 3, 1).flatten(1, 2)
+        new_pos_embed = torch.cat((extra_tokens, pos_tokens), dim=1)
+        checkpoint_model['pos_embed'] = new_pos_embed
 
-    #     # interpolate position embedding
-    #     pos_embed_checkpoint = checkpoint_model['pos_embed']
-    #     embedding_size = pos_embed_checkpoint.shape[-1]
-    #     num_patches = model.patch_embed.num_patches
-    #     num_extra_tokens = model.pos_embed.shape[-2] - num_patches
-    #     orig_size = int((pos_embed_checkpoint.shape[-2] - num_extra_tokens) ** 0.5)
-    #     new_size = int(num_patches ** 0.5)
-    #     extra_tokens = pos_embed_checkpoint[:, :num_extra_tokens]
-    #     pos_tokens = pos_embed_checkpoint[:, num_extra_tokens:]
-    #     pos_tokens = pos_tokens.reshape(-1, orig_size, orig_size, embedding_size).permute(0, 3, 1, 2)
-    #     pos_tokens = torch.nn.functional.interpolate(
-    #         pos_tokens, size=(new_size, new_size), mode='bicubic', align_corners=False)
-    #     pos_tokens = pos_tokens.permute(0, 2, 3, 1).flatten(1, 2)
-    #     new_pos_embed = torch.cat((extra_tokens, pos_tokens), dim=1)
-    #     checkpoint_model['pos_embed'] = new_pos_embed
+        model.load_state_dict(checkpoint_model, strict=False)
 
-    #     model.load_state_dict(checkpoint_model, strict=False)
+    model.to(device)
 
-    # model.to(device)
-
-    # # Freeze the backbone in case of linear evaluation
-    # if args.SiT_LinearEvaluation == 1:
-    #     requires_grad(model, False)
+    # Freeze the backbone in case of linear evaluation
+    if args.SiT_LinearEvaluation == 1:
+        requires_grad(model, False)
         
-    #     model.rot_head.weight.requires_grad = True
-    #     model.rot_head.bias.requires_grad = True
+        model.rot_head.weight.requires_grad = True
+        model.rot_head.bias.requires_grad = True
         
-    #     model.contrastive_head.weight.requires_grad = True
-    #     model.contrastive_head.bias.requires_grad = True
+        model.contrastive_head.weight.requires_grad = True
+        model.contrastive_head.bias.requires_grad = True
         
-    #     if args.representation_size is not None:
-    #         model.pre_logits_rot.fc.weight.requires_grad = True
-    #         model.pre_logits_rot.fc.bias.requires_grad = True
+        if args.representation_size is not None:
+            model.pre_logits_rot.fc.weight.requires_grad = True
+            model.pre_logits_rot.fc.bias.requires_grad = True
             
-    #         model.pre_logits_contrastive.fc.weight.requires_grad = True
-    #         model.pre_logits_contrastive.fc.bias.requires_grad = True            
+            model.pre_logits_contrastive.fc.weight.requires_grad = True
+            model.pre_logits_contrastive.fc.bias.requires_grad = True            
 
 
-    # model_ema = None
-    # if args.model_ema:
-    #     model_ema = ModelEma(model, decay=args.model_ema_decay,
-    #         device='cpu' if args.model_ema_force_cpu else '', resume='')
+    model_ema = None
+    if args.model_ema:
+        model_ema = ModelEma(model, decay=args.model_ema_decay,
+            device='cpu' if args.model_ema_force_cpu else '', resume='')
 
-    # model_without_ddp = model
-    # if args.distributed:
-    #     model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[args.gpu])
-    #     model_without_ddp = model.module
+    model_without_ddp = model
+    if args.distributed:
+        model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[args.gpu])
+        model_without_ddp = model.module
         
-    # n_parameters = sum(p.numel() for p in model.parameters() if p.requires_grad)
-    # print('number of params:', n_parameters)
+    n_parameters = sum(p.numel() for p in model.parameters() if p.requires_grad)
+    print('number of params:', n_parameters)
 
-    # linear_scaled_lr = args.lr * args.batch_size * utils.get_world_size() / 512.0
-    # args.lr = linear_scaled_lr
-    # optimizer = create_optimizer(args, model_without_ddp)
-    # loss_scaler = NativeScaler()
+    linear_scaled_lr = args.lr * args.batch_size * utils.get_world_size() / 512.0
+    args.lr = linear_scaled_lr
+    optimizer = create_optimizer(args, model_without_ddp)
+    loss_scaler = NativeScaler()
 
-    # lr_scheduler, _ = create_scheduler(args, optimizer)
+    lr_scheduler, _ = create_scheduler(args, optimizer)
 
-    # if args.training_mode == 'SSL':
-    #     criterion = MTL_loss(args.device, args.batch_size)
-    # elif args.training_mode == 'finetune' and args.mixup > 0.:
-    #     criterion = SoftTargetCrossEntropy()
-    # else:
-    #     criterion = torch.nn.CrossEntropyLoss()
+    if args.training_mode == 'SSL':
+        criterion = MTL_loss(args.device, args.batch_size)
+    elif args.training_mode == 'finetune' and args.mixup > 0.:
+        criterion = SoftTargetCrossEntropy()
+    else:
+        criterion = torch.nn.CrossEntropyLoss()
 
 
 
-    # output_dir = Path(args.output_dir)
-    # if args.resume:
-    #     checkpoint = torch.load(args.resume, map_location='cpu')
-    #     model_without_ddp.load_state_dict(checkpoint['model'])
-    #     if not args.eval and 'optimizer' in checkpoint and 'lr_scheduler' in checkpoint and 'epoch' in checkpoint:
-    #         optimizer.load_state_dict(checkpoint['optimizer'])
-    #         lr_scheduler.load_state_dict(checkpoint['lr_scheduler'])
-    #         args.start_epoch = checkpoint['epoch'] + 1
-    #         if args.model_ema:
-    #             utils._load_checkpoint_for_ema(model_ema, checkpoint['model_ema'])
-    #         if 'scaler' in checkpoint:
-    #             loss_scaler.load_state_dict(checkpoint['scaler'])
+    output_dir = Path(args.output_dir)
+    if args.resume:
+        checkpoint = torch.load(args.resume, map_location='cpu')
+        model_without_ddp.load_state_dict(checkpoint['model'])
+        if not args.eval and 'optimizer' in checkpoint and 'lr_scheduler' in checkpoint and 'epoch' in checkpoint:
+            optimizer.load_state_dict(checkpoint['optimizer'])
+            lr_scheduler.load_state_dict(checkpoint['lr_scheduler'])
+            args.start_epoch = checkpoint['epoch'] + 1
+            if args.model_ema:
+                utils._load_checkpoint_for_ema(model_ema, checkpoint['model_ema'])
+            if 'scaler' in checkpoint:
+                loss_scaler.load_state_dict(checkpoint['scaler'])
 
-    # if args.eval:
-    #     test_stats = evaluate_SSL(data_loader_val, model, device)
-    #     print(f"Accuracy of the network on the {len(dataset_val)} test images: {test_stats['acc1']:.1f}%")
-    #     return
+    if args.eval:
+        test_stats = evaluate_SSL(data_loader_val, model, device)
+        print(f"Accuracy of the network on the {len(dataset_val)} test images: {test_stats['acc1']:.1f}%")
+        return
 
-    # print(f"Start training for {args.epochs} epochs")
-    # start_time = time.time()
-    # max_accuracy = 0.0
-    # for epoch in range(args.start_epoch, args.epochs):
-    #     if args.distributed:
-    #         data_loader_train.sampler.set_epoch(epoch)
+    print(f"Start training for {args.epochs} epochs")
+    start_time = time.time()
+    max_accuracy = 0.0
+    for epoch in range(args.start_epoch, args.epochs):
+        if args.distributed:
+            data_loader_train.sampler.set_epoch(epoch)
 
-    #     if args.training_mode == 'SSL':
-    #         train_stats = train_SSL(
-    #             model, criterion, data_loader_train, optimizer, device, epoch, loss_scaler,
-    #             args.clip_grad, model_ema, mixup_fn)
-    #     else:
-    #         train_stats = train_finetune(
-    #             model, criterion, data_loader_train, optimizer, device, epoch, loss_scaler,
-    #             args.clip_grad, model_ema, mixup_fn)
+        if args.training_mode == 'SSL':
+            train_stats = train_SSL(
+                model, criterion, data_loader_train, optimizer, device, epoch, loss_scaler,
+                args.clip_grad, model_ema, mixup_fn)
+        else:
+            train_stats = train_finetune(
+                model, criterion, data_loader_train, optimizer, device, epoch, loss_scaler,
+                args.clip_grad, model_ema, mixup_fn)
             
-    #     lr_scheduler.step(epoch)
+        lr_scheduler.step(epoch)
             
-    #     if epoch%args.validate_every == 0:
-    #         if args.output_dir:
-    #             checkpoint_paths = [output_dir / 'checkpoint.pth']
-    #             for checkpoint_path in checkpoint_paths:
-    #                 utils.save_on_master({
-    #                     'model': model_without_ddp.state_dict(),
-    #                     'optimizer': optimizer.state_dict(),
-    #                     'lr_scheduler': lr_scheduler.state_dict(),
-    #                     'epoch': epoch,
-    #                     'model_ema': get_state_dict(model_ema),
-    #                     'scaler': loss_scaler.state_dict(),
-    #                     'args': args,
-    #                 }, checkpoint_path)
+        if epoch%args.validate_every == 0:
+            if args.output_dir:
+                checkpoint_paths = [output_dir / 'checkpoint.pth']
+                for checkpoint_path in checkpoint_paths:
+                    utils.save_on_master({
+                        'model': model_without_ddp.state_dict(),
+                        'optimizer': optimizer.state_dict(),
+                        'lr_scheduler': lr_scheduler.state_dict(),
+                        'epoch': epoch,
+                        'model_ema': get_state_dict(model_ema),
+                        'scaler': loss_scaler.state_dict(),
+                        'args': args,
+                    }, checkpoint_path)
     
-    #         if args.training_mode == 'SSL':
-    #             test_stats = evaluate_SSL(data_loader_val, model, device, epoch, args.output_dir)
-    #         else:
-    #             test_stats = evaluate_finetune(data_loader_val, model, device)
+            if args.training_mode == 'SSL':
+                test_stats = evaluate_SSL(data_loader_val, model, device, epoch, args.output_dir)
+            else:
+                test_stats = evaluate_finetune(data_loader_val, model, device)
 
-    #             print(f"Accuracy of the network on the {len(dataset_val)} test images: {test_stats['acc1']:.1f}%")
-    #             max_accuracy = max(max_accuracy, test_stats["acc1"])
-    #             print(f'Max accuracy: {max_accuracy:.2f}%')
+                print(f"Accuracy of the network on the {len(dataset_val)} test images: {test_stats['acc1']:.1f}%")
+                max_accuracy = max(max_accuracy, test_stats["acc1"])
+                print(f'Max accuracy: {max_accuracy:.2f}%')
 
-    #     log_stats = {**{f'train_{k}': v for k, v in train_stats.items()},
-    #                  **{f'test_{k}': v for k, v in test_stats.items()},
-    #                  'epoch': epoch,
-    #                  'n_parameters': n_parameters}
+        log_stats = {**{f'train_{k}': v for k, v in train_stats.items()},
+                     **{f'test_{k}': v for k, v in test_stats.items()},
+                     'epoch': epoch,
+                     'n_parameters': n_parameters}
 
-    #     if args.output_dir and utils.is_main_process():
-    #         with (output_dir / "log.txt").open("a") as f:
-    #             f.write(json.dumps(log_stats) + "\n")
+        if args.output_dir and utils.is_main_process():
+            with (output_dir / "log.txt").open("a") as f:
+                f.write(json.dumps(log_stats) + "\n")
 
-    # total_time = time.time() - start_time
-    # total_time_str = str(datetime.timedelta(seconds=int(total_time)))
-    # print('Training time {}'.format(total_time_str))
+    total_time = time.time() - start_time
+    total_time_str = str(datetime.timedelta(seconds=int(total_time)))
+    print('Training time {}'.format(total_time_str))
 
 
 if __name__ == '__main__':
