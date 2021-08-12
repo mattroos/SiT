@@ -23,10 +23,17 @@ The training strategy is adopted from [Deit](https://github.com/facebookresearch
 If using a single GPU, use a smaller batch size and fewer workers
 > python main.py --batch-size 16 --epochs 501 --min-lr 5e-6 --lr 1e-3 --training-mode 'SSL' --data-set 'STL10' --output 'checkpoints/SSL/STL10' --validate-every 10 --num_workers 8
 
+If resuming training (with a single GPU) on the COWS dataset
+> python cow_main.py --batch-size 16 --epochs 501 --min-lr 5e-6 --lr 1e-3 --training-mode 'SSL' --data-set 'COWS' --output 'checkpoints/SSL/COWS' --validate-every 10 --num_workers 8 --resume 'checkpoints/SSL/STL10/checkpoint4.pth'
+
 Self-supervised pre-trained models using SiT can be downloaded from [here](https://drive.google.com/drive/folders/1b1Yu1r-yaflz8Uu_D9oE6ft5TMwK-wLR?usp=sharing)
 
 # Finetuning
 > python -m torch.distributed.launch --nproc_per_node=4 --use_env main.py  --batch-size 120 --epochs 501 --min-lr 5e-6 --training-mode 'finetune' --data-set 'STL10' --finetune 'checkpoints/SSL/STL10/checkpoint.pth' --output 'checkpoints/finetune/STL10' --validate-every 10 
+
+
+# Evaluating, using the SSL losses as metrics
+> python cow_ssl_eval.py --batch-size 16 --epochs 501 --min-lr 5e-6 --lr 1e-3 --training-mode 'SSL' --output 'checkpoints/SSL/STL10' --validate-every 10 --num_workers 8 --data-set 'STL10' --resume 'checkpoints/SSL/STL10/checkpoint4.pth'
 
 # Linear Evaluation
 
