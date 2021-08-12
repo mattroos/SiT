@@ -51,7 +51,8 @@ def build_dataset(is_train, args):
         
         # dataset = COWS('/Users/mattroos/scratch/images_crc', transform=transform)
         # dataset = COWS('/Data/DairyTech/Flickr', transform=transform)
-        dataset = COWS('/Data/DairyTech/Flickr_cows_postprocessed', transform=transform)
+        mode = 'train' if is_train else 'val'
+        dataset = COWS('/Data/DairyTech/Flickr_cows_postprocessed', mode=mode, transform=transform)
 
         nb_classes = 1
 
@@ -61,6 +62,12 @@ def build_dataset(is_train, args):
 def build_transform(is_train, args):
     resize_im = args.input_size > 32
     if is_train:
+        # if args.train_interpolation == 'bilinear':
+        #     interpolation = transforms.InterpolationMode.BILINEAR
+        # elif args.train_interpolation == 'bicubic':
+        #     interpolation = transforms.InterpolationMode.BICUBIC
+        # else:
+        #     interpolation = train_interpolation.interpolation
         transform = create_transform(
             input_size=args.input_size,
             is_training=True,

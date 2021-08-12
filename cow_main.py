@@ -158,7 +158,8 @@ def get_args_parser():
                         help='Pin CPU memory in DataLoader for more efficient (sometimes) transfer to GPU.')
     parser.add_argument('--no-pin-mem', action='store_false', dest='pin_mem',
                         help='')
-    parser.set_defaults(pin_mem=True)
+    # parser.set_defaults(pin_mem=True)
+    parser.set_defaults(pin_mem=False)
 
     # distributed training parameters
     parser.add_argument('--world_size', default=1, type=int,
@@ -219,8 +220,8 @@ def main(args):
         pin_memory=args.pin_mem, drop_last=True, collate_fn=collate_fn)
 
     data_loader_val = torch.utils.data.DataLoader(dataset_val, sampler=sampler_val,
-        batch_size=int(1.5 * args.batch_size), num_workers=args.num_workers,
-        pin_memory=args.pin_mem, drop_last=False, collate_fn=collate_fn)
+        batch_size=int(args.batch_size), num_workers=args.num_workers,
+        pin_memory=args.pin_mem, drop_last=True, collate_fn=collate_fn)
 
     mixup_fn = None
     mixup_active = args.mixup > 0 or args.cutmix > 0. or args.cutmix_minmax is not None
@@ -348,7 +349,9 @@ def main(args):
                 loss_scaler.load_state_dict(checkpoint['scaler'])
 
     if args.eval:
-        test_stats = evaluate_SSL(data_loader_val, model, device)
+        # test_stats = evaluate_SSL(data_loader_val, model, device)
+        epoch = np.nan
+        test_stats = evaluate_SSL(data_loader_val, model, criterion, device, epoch, args.output_dir)
         print(f"Accuracy of the network on the {len(dataset_val)} test images: {test_stats['acc1']:.1f}%")
         return
 
@@ -370,7 +373,7 @@ def main(args):
             
         lr_scheduler.step(epoch)
             
-        if epoch%args.validate_every == 0:
+        if epoch==args.start_epoch or epoch%args.validate_every == 0:
             if args.output_dir:
                 checkpoint_paths = [output_dir / 'checkpoint.pth']
                 for checkpoint_path in checkpoint_paths:
@@ -385,7 +388,8 @@ def main(args):
                     }, checkpoint_path)
     
             if args.training_mode == 'SSL':
-                test_stats = evaluate_SSL(data_loader_val, model, device, epoch, args.output_dir)
+                # test_stats = evaluate_SSL(data_loader_val, model, device, epoch, args.output_dir)
+                test_stats = evaluate_SSL(data_loader_val, model, criterion, device, epoch, args.output_dir)
             else:
                 test_stats = evaluate_finetune(data_loader_val, model, device)
 

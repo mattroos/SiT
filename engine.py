@@ -166,12 +166,15 @@ def train_SSL(model: torch.nn.Module, criterion,
             model_ema.update(model)
 
         metric_logger.update(loss=loss_value)
-        metric_logger.update(RotationLoss=loss1.data.item())
-        metric_logger.update(RotationScalar=r_w.data.item())
-        metric_logger.update(ContrastiveLoss=loss2.data.item())
-        metric_logger.update(ContrastiveScalar=cn_w.data.item())
-        metric_logger.update(ReconstructionLoss=loss3.data.item())
-        metric_logger.update(ReconstructionScalar=rec_w.data.item())
+        # metric_logger.update(RotationLoss=loss1.data.item())
+        # metric_logger.update(RotationScalar=r_w.data.item())
+        # metric_logger.update(ContrastiveLoss=loss2.data.item())
+        # metric_logger.update(ContrastiveScalar=cn_w.data.item())
+        # metric_logger.update(ReconstructionLoss=loss3.data.item())
+        # metric_logger.update(ReconstructionScalar=rec_w.data.item())
+        metric_logger.update(Rot=loss1.data.item())
+        metric_logger.update(Contrast=loss2.data.item())
+        metric_logger.update(Recon=loss3.data.item())
         metric_logger.update(lr=optimizer.param_groups[0]["lr"])
         
         i = i + 1

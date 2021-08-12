@@ -355,8 +355,8 @@ def main(args):
 
     print(f"Evaluating SSL...")
     epoch = np.nan
-    criterion = MTL_loss(args.device, int(args.batch_size*1.5))
-    test_stats = evaluate_SSL(data_loader_val, model, criterion, device, epoch, args.output_dir)
+    criterion_test = MTL_loss(args.device, int(1.5 * args.batch_size))
+    test_stats = evaluate_SSL(data_loader_val, model, criterion_test, device, epoch, args.output_dir)
     start_time = time.time()
 
     # print(f"Start training for {args.epochs} epochs")
