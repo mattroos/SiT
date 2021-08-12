@@ -121,16 +121,21 @@ class MetricLogger(object):
         iter_time = SmoothedValue(fmt='{avg:.4f}')
         data_time = SmoothedValue(fmt='{avg:.4f}')
         space_fmt = ':' + str(len(str(len(iterable)))) + 'd'
+        # log_msg = [
+        #     header,
+        #     '[{0' + space_fmt + '}/{1}]',
+        #     'eta: {eta}',
+        #     '{meters}',
+        #     'time: {time}',
+        #     'data: {data}'
+        # ]
         log_msg = [
             header,
             '[{0' + space_fmt + '}/{1}]',
-            'eta: {eta}',
             '{meters}',
-            'time: {time}',
-            'data: {data}'
         ]
-        if torch.cuda.is_available():
-            log_msg.append('max mem: {memory:.0f}')
+        # if torch.cuda.is_available():
+        #     log_msg.append('max mem: {memory:.0f}')
         log_msg = self.delimiter.join(log_msg)
         MB = 1024.0 * 1024.0
         for obj in iterable:
@@ -141,16 +146,22 @@ class MetricLogger(object):
                 eta_seconds = iter_time.global_avg * (len(iterable) - i)
                 eta_string = str(datetime.timedelta(seconds=int(eta_seconds)))
                 if torch.cuda.is_available():
+                    # print(log_msg.format(
+                    #     i, len(iterable), eta=eta_string,
+                    #     meters=str(self),
+                    #     time=str(iter_time), data=str(data_time),
+                    #     memory=torch.cuda.max_memory_allocated() / MB))
                     print(log_msg.format(
-                        i, len(iterable), eta=eta_string,
-                        meters=str(self),
-                        time=str(iter_time), data=str(data_time),
-                        memory=torch.cuda.max_memory_allocated() / MB))
+                        i, len(iterable),
+                        meters=str(self)))
                 else:
+                    # print(log_msg.format(
+                    #     i, len(iterable), eta=eta_string,
+                    #     meters=str(self),
+                    #     time=str(iter_time), data=str(data_time)))
                     print(log_msg.format(
-                        i, len(iterable), eta=eta_string,
-                        meters=str(self),
-                        time=str(iter_time), data=str(data_time)))
+                        i, len(iterable),
+                        meters=str(self)))
             i += 1
             end = time.time()
         total_time = time.time() - start_time

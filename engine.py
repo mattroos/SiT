@@ -231,8 +231,8 @@ def train_finetune(model: torch.nn.Module, criterion,
 
 
 @torch.no_grad()
-def evaluate_SSL(data_loader, model, device, epoch, output_dir):
-    criterion = torch.nn.CrossEntropyLoss()
+def evaluate_SSL(data_loader, model, criterion, device, epoch, output_dir):
+    # criterion = torch.nn.CrossEntropyLoss()
     metric_logger = utils.MetricLogger(delimiter="  ")
     header = 'Test:'
 
@@ -260,8 +260,16 @@ def evaluate_SSL(data_loader, model, device, epoch, output_dir):
             rot_p = torch.cat([rot1_p, rot2_p], dim=0) 
             rots = torch.cat([rots1, rots2], dim=0) 
             
-            loss = criterion(rot_p, rots)
+            # loss = criterion(rot_p, rots)
 
+            # Compute same losses as during training - MJR
+            imgs_recon = torch.cat([imgs1_recon, imgs2_recon], dim=0) 
+            imgs = torch.cat([imgs1, imgs2], dim=0) 
+            
+            loss, (loss1, loss2, loss3) = criterion(rot_p, rots, 
+                                                        contrastive1_p, contrastive2_p, 
+                                                        imgs_recon, imgs, r_w, cn_w, rec_w)
+            
         acc1, acc5 = accuracy(rot_p, rots, topk=(1, 4))
 
         batch_size = imgs1.shape[0]*2
@@ -279,6 +287,9 @@ def evaluate_SSL(data_loader, model, device, epoch, output_dir):
             
             
         metric_logger.update(loss=loss.item())
+        metric_logger.update(Rot=loss1.data.item())
+        metric_logger.update(Contrast=loss2.data.item())
+        metric_logger.update(Recon=loss3.data.item())
         metric_logger.meters['acc1'].update(acc1.item(), n=batch_size)
         metric_logger.meters['acc5'].update(acc5.item(), n=batch_size)
         
