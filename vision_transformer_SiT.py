@@ -151,7 +151,7 @@ class VisionTransformer_SiT(nn.Module):
         self.num_classes = num_classes
         self.num_features = self.embed_dim = embed_dim  # num_features for consistency with other models
         self.training_mode=training_mode
-        self.num_tokens = 2
+        self.num_tokens = 3
         norm_layer = norm_layer or partial(nn.LayerNorm, eps=1e-6)
         act_layer = act_layer or nn.GELU
 
@@ -162,6 +162,7 @@ class VisionTransformer_SiT(nn.Module):
         
         self.rot_token = nn.Parameter(torch.zeros(1, 1, embed_dim))
         self.contrastive_token = nn.Parameter(torch.zeros(1, 1, embed_dim))
+        self.scale_token = nn.Parameter(torch.zeros(1, 1, embed_dim))
 
         self.pos_embed = nn.Parameter(torch.zeros(1, num_patches + self.num_tokens, embed_dim))
         self.pos_drop = nn.Dropout(p=drop_rate)
@@ -186,30 +187,39 @@ class VisionTransformer_SiT(nn.Module):
                     ('fc', nn.Linear(embed_dim, representation_size)),
                     ('act', nn.Tanh())
                 ]))
+            self.pre_logits_scale = nn.Sequential(OrderedDict([
+                    ('fc', nn.Linear(embed_dim, representation_size)),
+                    ('act', nn.Tanh())
+                ]))
         else:
             self.pre_logits_rot = nn.Identity()
             self.pre_logits_contrastive = nn.Identity()
+            self.pre_logits_scale = nn.Identity()
 
         # Classifier head(s)
         if training_mode == 'SSL':
             self.rot_head = nn.Linear(self.num_features, 4) 
             self.contrastive_head = nn.Linear(self.num_features, 512) 
+            self.scale_head = nn.Linear(self.num_features, 1)
             self.convTrans = nn.ConvTranspose2d(embed_dim, in_chans, kernel_size=(patch_size, patch_size), 
                                                 stride=(patch_size, patch_size))
             
             # create learnable parameters for the MTL task
             self.rot_w = nn.Parameter(torch.tensor([1.0]))
             self.contrastive_w = nn.Parameter(torch.tensor([1.0]))
+            self.scale_w = nn.Parameter(torch.tensor([1.0]))
             self.recons_w = nn.Parameter(torch.tensor([1.0]))
         else:
             self.rot_head = nn.Linear(self.num_features, num_classes) 
             self.contrastive_head = nn.Linear(self.num_features, num_classes) 
+            self.scale_head = nn.Linear(self.num_features, 1) 
         
         
         # Weight init
         trunc_normal_(self.pos_embed, std=.02)
         trunc_normal_(self.rot_token, std=.02)
         trunc_normal_(self.contrastive_token, std=.02)
+        trunc_normal_(self.scale_token, std=.02)
 
         self.apply(self._init_vit_weights)
 
@@ -219,7 +229,7 @@ class VisionTransformer_SiT(nn.Module):
 
     @torch.jit.ignore
     def no_weight_decay(self):
-        return {'pos_embed', 'rot_token', 'contrastive_token'}
+        return {'pos_embed', 'rot_token', 'contrastive_token', 'scale_token'}
 
     def get_classifier(self):
         if self.dist_token is None:
@@ -230,19 +240,27 @@ class VisionTransformer_SiT(nn.Module):
     def reset_classifier(self, num_classes, global_pool=''):
         self.num_classes = num_classes
         if self.training_mode == 'finetune':
+            # MJR: What are the numbers of outputs being set to num_classes for these tasks?
+            #      Perhaps the classifier takens input from all hidden outputs, included
+            #      those that were used for pre-training tasks.
             self.rot_head = nn.Linear(self.num_features, num_classes) 
             self.contrastive_head = nn.Linear(self.num_features, num_classes) 
+            self.scale_head = nn.Linear(self.num_features, num_classes) 
         else:
             self.rot_head = nn.Linear(self.num_features, 4) 
             self.contrastive_head = nn.Linear(self.num_features, 512) 
+            self.scale_head = nn.Linear(self.num_features, 1) 
 
     def forward_features(self, x):
         B = x.shape[0]
         x = self.patch_embed(x)
         
+        # MJR: Expand (repeat) static tokens along the batch dimension, keeping patch and embedding dimension the same.
+        # This doesn't actually copy data, it just creates new views of the tensors.
         rot_token = self.rot_token.expand(B, -1, -1) 
         contrastive_token = self.contrastive_token.expand(B, -1, -1) 
-        x = torch.cat((rot_token, contrastive_token, x), dim=1)
+        scale_token = self.scale_token.expand(B, -1, -1) 
+        x = torch.cat((rot_token, contrastive_token, scale_token, x), dim=1)
     
         x = self.pos_drop(x + self.pos_embed)
         x = self.blocks(x)
@@ -258,13 +276,17 @@ class VisionTransformer_SiT(nn.Module):
         x_contrastive = self.pre_logits_contrastive(x[:, 1])
         x_contrastive = self.contrastive_head(x_contrastive)
 
+        x_scale = self.pre_logits_scale(x[:, 2])
+        x_scale = self.scale_head(x_scale)
+
         if self.training_mode == 'finetune':
-            return x_rot, x_contrastive
+            return x_rot, x_contrastive, x_scale
     
-        x_rec = x[:, 2:].transpose(1, 2)
+        # x_rec = x[:, 2:].transpose(1, 2)
+        x_rec = x[:, self.num_tokens:].transpose(1, 2)
         x_rec = self.convTrans(x_rec.unflatten(2, to_2tuple(int(math.sqrt(x_rec.size()[2])))))
         
-        return x_rot, x_contrastive, x_rec, self.rot_w, self.contrastive_w, self.recons_w
+        return x_rot, x_contrastive, x_scale, x_rec, self.rot_w, self.contrastive_w, self.scale_w, self.recons_w
 
 
     def _init_vit_weights(self, m):
